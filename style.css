@@ -124,3 +124,14 @@ header { border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; pa
 .badge-medium { background-color: #ffe000; color: #000; }
 .badge-low { background-color: #17a2b8; color: white; }
 }
+
+.compliance-tag {
+    display: inline-block;
+    padding: 3px 6px;
+    background-color: #f1f3f5;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: monospace;
+    color: #495057;
+}
