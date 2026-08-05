@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FortiOS Security Auditor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ Fortinet Configuration Security Auditor</h1>
+            <p>Select a local <code>.conf</code> backup file to scan. Processing happens 100% locally in your browser.</p>
+        </header>
+
+        <div class="upload-section">
+            <input type="file" id="configFile" accept=".conf,.txt">
+        </div>
+
+        <div id="resultsArea" class="hidden">
+            <div class="summary-box" id="summaryBox">
+                <!-- Summary stats injected here -->
+            </div>
+            
+            <div class="controls">
+                <button id="exportBtn" class="btn">Download Full Audit (CSV)</button>
+            </div>
+
+            <table id="findingsTable">
+                <thead>
+                    <tr>
+                        <th>Severity</th>
+                        <th>Element</th>
+                        <th>Security Issue</th>
+                        <th>Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Findings injected here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
