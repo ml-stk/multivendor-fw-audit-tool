@@ -136,19 +136,19 @@ function auditFortinet(text) {
 function auditCiscoASA(text) {
     const findings = [];
     
-    if (/http server enable/i.test(text)) {
+    // 1. Global Checks
+    if (/^\s*http server enable/im.test(text)) {
         findings.push({ severity: 'HIGH', element: 'Global Settings', issue: 'HTTP management server enabled', recommendation: 'Disable HTTP server and use SSH.' });
     }
+    if (/^\s*enable password.*level.*7/im.test(text) || /^\s*username.*password\s+7/im.test(text)) {
+        findings.push({ severity: 'MEDIUM', element: 'User Authentication', issue: 'Weak Type 7 password encryption', recommendation: 'Upgrade password hashing to Type 8 (PBKDF2) or Type 9 (scrypt).' });
+    }
     
-    // Extract ACL blocks to find specific lines
-    const aclLines = [...text.matchAll(/access-list\s+(\S+)\s+extended\s+permit\s+ip\s+any\s+any/gi)];
+    // 2. ACL Rules (Cisco syntax mandates single-line order, so we isolate the line and extract the ACL name)
+    const aclLines = [...text.matchAll(/^\s*access-list\s+(\S+)\s+extended\s+permit\s+ip\s+(any|any4)\s+(any|any4)/gim)];
     aclLines.forEach(acl => {
         findings.push({ severity: 'HIGH', element: `ACL: ${acl[1]}`, issue: 'Permit IP Any Any', recommendation: 'Replace with explicit source/destination host or subnet rules.' });
     });
-
-    if (/enable password.*level.*7/i.test(text)) {
-        findings.push({ severity: 'MEDIUM', element: 'User/Enable Authentication', issue: 'Weak Type 7 password encryption', recommendation: 'Upgrade password hashing to Type 8 (PBKDF2) or Type 9 (scrypt).' });
-    }
 
     return findings;
 }
@@ -156,46 +156,124 @@ function auditCiscoASA(text) {
 function auditPaloAlto(text) {
     const findings = [];
     
-    if (/<service-http>(?:yes|True)<\/service-http>/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Management Profile', issue: 'Plaintext HTTP management enabled', recommendation: 'Remove HTTP from the interface management profile.' });
+    // 1. Global Management Checks
+    if (/<service-http>(?:yes|True)<\/service-http>/i.test(text) || /set network interface.*management-profile.*(http|telnet)/i.test(text)) {
+        findings.push({ severity: 'HIGH', element: 'Management Profile', issue: 'Plaintext HTTP/Telnet management enabled', recommendation: 'Remove plaintext protocols from the interface management profile.' });
     }
     
-    // Extract rule names from "set rulebase security rules <RuleName>"
-    const rules = [...text.matchAll(/set rulebase security rules\s+(\S+)\s+(.*action allow.*)/gi)];
-    rules.forEach(rule => {
-        const ruleName = rule[1].replace(/"/g, ''); // strip quotes if present
-        const ruleBody = rule[2];
-        
-        if (/from any to any/i.test(ruleBody)) {
-            findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Any-to-Any permit rule', recommendation: 'Restrict zones and source/destination addresses.' });
+    // 2. XML Format - Block Level Processing
+    if (text.includes('<?xml') || text.includes('<security>')) {
+        const rulesBlockMatch = text.match(/<rules>([\s\S]*?)<\/rules>/i);
+        if (rulesBlockMatch) {
+            const entries = [...rulesBlockMatch[1].matchAll(/<entry name="([^"]+)">([\s\S]*?)<\/entry>/gi)];
+            
+            entries.forEach(entry => {
+                const ruleName = entry[1];
+                const body = entry[2];
+                
+                // Order-agnostic boolean checks
+                const isAllow = /<action>allow<\/action>/i.test(body);
+                const fromAny = /<from>\s*<member>any<\/member>\s*<\/from>/i.test(body);
+                const toAny = /<to>\s*<member>any<\/member>\s*<\/to>/i.test(body);
+                const appAny = /<application>\s*<member>any<\/member>\s*<\/application>/i.test(body);
+                const serviceAny = /<service>\s*<member>(any|application-default)<\/member>\s*<\/service>/i.test(body);
+
+                if (isAllow && fromAny && toAny) {
+                    findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Any-to-Any permit rule', recommendation: 'Restrict zones and source/destination addresses.' });
+                }
+                if (isAllow && appAny && serviceAny) {
+                    findings.push({ severity: 'MEDIUM', element: `Rule: ${ruleName}`, issue: 'Unrestricted Application & Service', recommendation: 'Define specific App-IDs instead of port-based Any.' });
+                }
+            });
         }
-        if (/application any service (any|application-default)/i.test(ruleBody)) {
-            findings.push({ severity: 'MEDIUM', element: `Rule: ${ruleName}`, issue: 'Unrestricted Application & Service', recommendation: 'Define specific App-IDs instead of port-based Any.' });
+    } else {
+        // 3. CLI "Set" Format - Grouping by Rule Name
+        const ruleLines = [...text.matchAll(/^\s*set rulebase security rules\s+"?([^"\n]+)"?\s+(.*)/gim)];
+        const rules = {};
+        
+        // Group all commands belonging to the same rule name
+        ruleLines.forEach(match => {
+            const name = match[1];
+            if (!rules[name]) rules[name] = "";
+            rules[name] += match[2] + "\n";
+        });
+
+        Object.keys(rules).forEach(ruleName => {
+            const body = rules[ruleName];
+            if (/action allow/i.test(body) && /from any/i.test(body) && /to any/i.test(body)) {
+                findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Any-to-Any permit rule', recommendation: 'Restrict zones and source/destination addresses.' });
+            }
+        });
+    }
+
+    return findings;
+}
+
+function auditMeraki(text) {
+    const findings = [];
+    
+    // 1. Global Checks
+    if (/"syslogDefaultRule"\s*:\s*false/i.test(text)) {
+        findings.push({ severity: 'MEDIUM', element: 'Network Wide Settings', issue: 'Default syslog logging disabled', recommendation: 'Enable syslog logging for traffic visibility.' });
+    }
+
+    // 2. JSON Object Block Extraction
+    // Safely isolates individual JSON objects { ... } to prevent cross-rule contamination
+    const ruleBlocks = text.match(/\{[^{}]*?\}/g) || [];
+    
+    ruleBlocks.forEach((body, index) => {
+        // Order-agnostic JSON key checks
+        if (/"policy"\s*:\s*"allow"/i.test(body)) {
+            const srcAny = /"srcCidr"\s*:\s*"Any"/i.test(body);
+            const destAny = /"destCidr"\s*:\s*"Any"/i.test(body);
+            const srcPortAny = /"srcPort"\s*:\s*"Any"/i.test(body);
+            const destPortAny = /"destPort"\s*:\s*"Any"/i.test(body);
+
+            if (srcAny && destAny) {
+                findings.push({ severity: 'HIGH', element: `L3 Rule Block ${index + 1}`, issue: 'Any-to-Any allow rule found', recommendation: 'Restrict CIDR blocks in the Meraki Dashboard.' });
+            }
+            if (srcPortAny && destPortAny) {
+                findings.push({ severity: 'MEDIUM', element: `L3 Rule Block ${index + 1}`, issue: 'Permissive Any-Port allow rule', recommendation: 'Define explicit TCP/UDP ports.' });
+            }
         }
     });
 
     return findings;
 }
 
-// Basic fallbacks for Meraki and Sophos using the new schema
-function auditMeraki(text) {
-    const findings = [];
-    if (/"policy"\s*:\s*"allow"[\s\S]*?"srcCidr"\s*:\s*"Any"[\s\S]*?"destCidr"\s*:\s*"Any"/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'L3 Firewall Rule', issue: 'Any-to-Any allow rule found', recommendation: 'Restrict CIDR blocks in the Meraki Dashboard.' });
-    }
-    if (/"syslogDefaultRule"\s*:\s*false/i.test(text)) {
-        findings.push({ severity: 'MEDIUM', element: 'Network Wide Settings', issue: 'Default syslog logging disabled', recommendation: 'Enable syslog logging for traffic visibility.' });
-    }
-    return findings;
-}
-
 function auditSophos(text) {
     const findings = [];
-    if (/(Action\s*=\s*Accept[\s\S]*?Source\s*=\s*Any[\s\S]*?Destination\s*=\s*Any|<Action>Accept<\/Action>[\s\S]*?<SourceNetworks>.*Any.*<\/SourceNetworks>[\s\S]*?<DestinationNetworks>.*Any.*<\/DestinationNetworks>)/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Firewall Rule', issue: 'Unrestricted Any-to-Any Accept', recommendation: 'Lock down source and destination networks explicitly.' });
-    }
+    
+    // 1. Global Checks
     if (/(Administration.*Device\s*Access.*HTTP\s*:\s*Enable|<ManageHTTP>Enable<\/ManageHTTP>)/i.test(text)) {
         findings.push({ severity: 'HIGH', element: 'Device Access', issue: 'HTTP administration enabled', recommendation: 'Disable HTTP access on WAN and LAN zones.' });
     }
+
+    // 2. XML Format Block Extraction
+    const xmlRules = [...text.matchAll(/<FirewallRule>([\s\S]*?)<\/FirewallRule>/gi)];
+    
+    xmlRules.forEach((rule, index) => {
+        const body = rule[1];
+        
+        // Try to extract the custom rule name, fallback to index if missing
+        const nameMatch = body.match(/<Name>([^<]+)<\/Name>/i);
+        const ruleName = nameMatch ? nameMatch[1] : `Rule ${index + 1}`;
+
+        // Strip line breaks for inner tag evaluation
+        const cleanBody = body.replace(/\n/g, ' ');
+        
+        const isAccept = /<Action>Accept<\/Action>/i.test(cleanBody);
+        const hasSourceAny = /<SourceNetworks>.*Any.*<\/SourceNetworks>/i.test(cleanBody);
+        const hasDestAny = /<DestinationNetworks>.*Any.*<\/DestinationNetworks>/i.test(cleanBody);
+        const hasServiceAny = /<Services>.*Any.*<\/Services>/i.test(cleanBody);
+
+        if (isAccept && hasSourceAny && hasDestAny) {
+             findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Unrestricted Any-to-Any Accept', recommendation: 'Lock down source and destination networks explicitly.' });
+        }
+        if (isAccept && hasServiceAny) {
+             findings.push({ severity: 'MEDIUM', element: `Rule: ${ruleName}`, issue: 'Policy allows Any Service', recommendation: 'Define specific ports and services.' });
+        }
+    });
+
     return findings;
 }
