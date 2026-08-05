@@ -96,47 +96,69 @@ function downloadCSV(findings) {
 function auditFortinet(text) {
     const findings = [];
     
-    // 1. Global Interface Checks (Order independent)
+    // 1. Global Interface Checks
     if (/set allowaccess[^\n]*(?:telnet|http\b)/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Global / Interfaces', issue: 'Insecure management protocol (Telnet/HTTP)', recommendation: 'Disable plaintext protocols and enforce SSH/HTTPS.' });
+        findings.push({ 
+            severity: 'HIGH', 
+            element: 'Global / Interfaces', 
+            issue: 'Insecure management protocol (Telnet/HTTP)', 
+            recommendation: 'Disable plaintext protocols and enforce SSH/HTTPS.',
+            compliance: 'PCI-DSS Req 2.2.6 / CIS 4.1'
+        });
     }
 
     // 2. Isolate Firewall Policy Sections
-    // Uses multi-line flags (m) to safely capture blocks across all VDOMs
     const policyBlocks = [...text.matchAll(/config firewall policy\b([\s\S]*?)^\s*end\b/gim)];
     
     policyBlocks.forEach(blockMatch => {
         const policySection = blockMatch[1];
         
-        // 3. Extract every individual policy block: "edit <ID> ... next"
+        // 3. Extract individual policies
         const policies = [...policySection.matchAll(/^\s*edit\s+(\d+)\b([\s\S]*?)^\s*next\b/gim)];
 
         policies.forEach(p => {
             const id = p[1];
-            const body = p[2]; // The raw text inside this specific policy
+            const body = p[2];
 
-            // 4. Test for conditions independently (solves the line-order bug)
+            // 4. Test conditions independently
             const isAccept = /set action accept/i.test(body);
             const hasServiceAll = /set service "ALL"/i.test(body);
             const hasSrcAll = /set srcaddr "all"/i.test(body);
             const hasDstAll = /set dstaddr "all"/i.test(body);
-            const loggingDisabled = /set logtraffic disable/i.test(body);
+            
+            // Fix: Check for explicit logging. If missing, it defaults to disabled.
+            const hasLogging = /set logtraffic\s+(all|utm)/i.test(body); 
 
-            // 5. Evaluate Logic
-            if (loggingDisabled) {
+            // 5. Evaluate Logic against original tool parameters
+            
+            if (isAccept && hasSrcAll && hasDstAll) {
+                findings.push({ 
+                    severity: 'CRITICAL', 
+                    element: `Policy ${id}`, 
+                    issue: 'Permissive Access (Any-to-Any)', 
+                    recommendation: 'Restrict source and destination addresses to specific subnets.',
+                    compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+                });
+            }
+
+            if (isAccept && !hasLogging) {
+                findings.push({ 
+                    severity: 'HIGH', 
+                    element: `Policy ${id}`, 
+                    issue: 'Traffic Logging Disabled on Allow Rule', 
+                    recommendation: "Set logtraffic to 'all' or 'utm' to ensure an audit trail is maintained.",
+                    compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2'
+                });
+            }
+
+            if (isAccept && hasServiceAll) {
                 findings.push({ 
                     severity: 'MEDIUM', 
                     element: `Policy ${id}`, 
-                    issue: 'Traffic logging disabled', 
-                    recommendation: 'Set logtraffic to "utm" or "all" to maintain audit trails.',
-                    compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2' // <-- New standard mapping
+                    issue: 'Service port set to ALL', 
+                    recommendation: 'Define explicit TCP/UDP ports required for the application.',
+                    compliance: 'PCI-DSS Req 1.2.2 / CIS 4.4'
                 });
-            }
-            if (isAccept && hasSrcAll && hasDstAll) {
-                findings.push({ severity: 'HIGH', element: `Policy ${id}`, issue: 'Any-to-Any Permit rule', recommendation: 'Restrict source and destination to explicit networks/IPs.' });
-            }
-            if (isAccept && hasServiceAll) {
-                findings.push({ severity: 'MEDIUM', element: `Policy ${id}`, issue: 'Service port set to ALL', recommendation: 'Define explicit TCP/UDP ports required for the application.' });
             }
         });
     });
