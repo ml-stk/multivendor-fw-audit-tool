@@ -118,11 +118,13 @@ header { border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; pa
     border-radius: 4px;
     font-size: 0.85em;
     font-weight: bold;
+    text-transform: uppercase;
 }
 
-.badge-high { background-color: #dc3545; color: white; }
-.badge-medium { background-color: #ffe000; color: #000; }
-.badge-low { background-color: #17a2b8; color: white; }
+.badge-critical { background-color: #e53935; color: white; }
+.badge-high { background-color: #ff9800; color: white; }
+.badge-medium { background-color: #ffeb3b; color: #333; }
+.badge-low { background-color: #03a9f4; color: white; }
 }
 
 .compliance-tag {
