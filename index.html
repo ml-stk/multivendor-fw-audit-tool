@@ -3,42 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FortiOS Security Auditor</title>
+    <title>Multi-Vendor Firewall Audit Tool</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🛡️ Fortinet Configuration Security Auditor</h1>
-            <p>Select a local <code>.conf</code> backup file to scan. Processing happens 100% locally in your browser.</p>
+            <h1>🛡️ Multi-Vendor Firewall Security Auditor</h1>
+            <p>Perform zero-trust, client-side compliance and security audits across Fortinet, Cisco, Palo Alto, and more.</p>
         </header>
 
-        <div class="upload-section">
-            <input type="file" id="configFile" accept=".conf,.txt">
+        <div class="config-section">
+            <label for="vendorSelect"><strong>Select Firewall Vendor / OS:</strong></label>
+            <select id="vendorSelect">
+                <option value="fortinet">Fortinet FortiOS</option>
+                <option value="cisco_asa">Cisco ASA / IOS</option>
+                <option value="paloalto">Palo Alto PAN-OS</option>
+            </select>
         </div>
 
-        <div id="resultsArea" class="hidden">
-            <div class="summary-box" id="summaryBox">
-                <!-- Summary stats injected here -->
-            </div>
-            
-            <div class="controls">
-                <button id="exportBtn" class="btn">Download Full Audit (CSV)</button>
-            </div>
+        <div class="upload-card">
+            <h3>Upload Configuration File</h3>
+            <p class="subtext">Supports text, configuration, or backup files (.conf, .txt, .cfg)</p>
+            <input type="file" id="configFile" accept=".conf,.txt,.cfg">
+        </div>
 
-            <table id="findingsTable">
-                <thead>
-                    <tr>
-                        <th>Severity</th>
-                        <th>Element</th>
-                        <th>Security Issue</th>
-                        <th>Recommendation</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <!-- Findings injected here -->
-                </tbody>
-            </table>
+        <div class="controls-center">
+            <button id="auditBtn" class="btn" disabled>Run Security Audit</button>
+        </div>
+
+        <div id="outputArea" class="hidden">
+            <h3>🔍 Audit Results & Findings</h3>
+            <div id="resultsContainer"></div>
         </div>
     </div>
     <script src="app.js"></script>
