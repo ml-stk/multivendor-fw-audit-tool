@@ -1,1 +1,0 @@
-# fortigate-security-audit
