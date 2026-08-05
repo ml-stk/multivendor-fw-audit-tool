@@ -171,16 +171,34 @@ function auditCiscoASA(text) {
     
     // 1. Global Checks
     if (/^\s*http server enable/im.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Global Settings', issue: 'HTTP management server enabled', recommendation: 'Disable HTTP server and use SSH.' });
+        findings.push({ 
+            severity: 'HIGH', 
+            element: 'Global Settings', 
+            issue: 'HTTP management server enabled', 
+            recommendation: 'Disable HTTP server and use SSH.',
+            compliance: 'PCI-DSS Req 2.2.6 / CIS 4.1'
+        });
     }
     if (/^\s*enable password.*level.*7/im.test(text) || /^\s*username.*password\s+7/im.test(text)) {
-        findings.push({ severity: 'MEDIUM', element: 'User Authentication', issue: 'Weak Type 7 password encryption', recommendation: 'Upgrade password hashing to Type 8 (PBKDF2) or Type 9 (scrypt).' });
+        findings.push({ 
+            severity: 'MEDIUM', 
+            element: 'User Authentication', 
+            issue: 'Weak Type 7 password encryption', 
+            recommendation: 'Upgrade password hashing to Type 8 (PBKDF2) or Type 9 (scrypt).',
+            compliance: 'PCI-DSS Req 8.3.2 / NIST 800-53'
+        });
     }
     
-    // 2. ACL Rules (Cisco syntax mandates single-line order, so we isolate the line and extract the ACL name)
+    // 2. ACL Rules Inspection
     const aclLines = [...text.matchAll(/^\s*access-list\s+(\S+)\s+extended\s+permit\s+ip\s+(any|any4)\s+(any|any4)/gim)];
     aclLines.forEach(acl => {
-        findings.push({ severity: 'HIGH', element: `ACL: ${acl[1]}`, issue: 'Permit IP Any Any', recommendation: 'Replace with explicit source/destination host or subnet rules.' });
+        findings.push({ 
+            severity: 'CRITICAL', 
+            element: `ACL: ${acl[1]}`, 
+            issue: 'Permissive Access (Any-to-Any)', 
+            recommendation: 'Replace with explicit source/destination host or subnet rules.',
+            compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+        });
     });
 
     return findings;
@@ -191,7 +209,13 @@ function auditPaloAlto(text) {
     
     // 1. Global Management Checks
     if (/<service-http>(?:yes|True)<\/service-http>/i.test(text) || /set network interface.*management-profile.*(http|telnet)/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Management Profile', issue: 'Plaintext HTTP/Telnet management enabled', recommendation: 'Remove plaintext protocols from the interface management profile.' });
+        findings.push({ 
+            severity: 'HIGH', 
+            element: 'Management Profile', 
+            issue: 'Plaintext HTTP/Telnet management enabled', 
+            recommendation: 'Remove plaintext protocols from the interface management profile.',
+            compliance: 'PCI-DSS Req 2.2.6 / CIS 4.1'
+        });
     }
     
     // 2. XML Format - Block Level Processing
@@ -204,18 +228,39 @@ function auditPaloAlto(text) {
                 const ruleName = entry[1];
                 const body = entry[2];
                 
-                // Order-agnostic boolean checks
                 const isAllow = /<action>allow<\/action>/i.test(body);
                 const fromAny = /<from>\s*<member>any<\/member>\s*<\/from>/i.test(body);
                 const toAny = /<to>\s*<member>any<\/member>\s*<\/to>/i.test(body);
                 const appAny = /<application>\s*<member>any<\/member>\s*<\/application>/i.test(body);
                 const serviceAny = /<service>\s*<member>(any|application-default)<\/member>\s*<\/service>/i.test(body);
+                const loggingDisabled = /<log-end>no<\/log-end>/i.test(body);
 
                 if (isAllow && fromAny && toAny) {
-                    findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Any-to-Any permit rule', recommendation: 'Restrict zones and source/destination addresses.' });
+                    findings.push({ 
+                        severity: 'CRITICAL', 
+                        element: `Rule: ${ruleName}`, 
+                        issue: 'Permissive Access (Any-to-Any)', 
+                        recommendation: 'Restrict zones and source/destination addresses.',
+                        compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+                    });
+                }
+                if (isAllow && loggingDisabled) {
+                    findings.push({ 
+                        severity: 'HIGH', 
+                        element: `Rule: ${ruleName}`, 
+                        issue: 'Traffic Logging Disabled on Allow Rule', 
+                        recommendation: 'Enable session end logging to maintain a secure audit trail.',
+                        compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2'
+                    });
                 }
                 if (isAllow && appAny && serviceAny) {
-                    findings.push({ severity: 'MEDIUM', element: `Rule: ${ruleName}`, issue: 'Unrestricted Application & Service', recommendation: 'Define specific App-IDs instead of port-based Any.' });
+                    findings.push({ 
+                        severity: 'MEDIUM', 
+                        element: `Rule: ${ruleName}`, 
+                        issue: 'Unrestricted Application & Service', 
+                        recommendation: 'Define specific App-IDs instead of port-based Any.',
+                        compliance: 'PCI-DSS Req 1.2.2 / CIS 4.4'
+                    });
                 }
             });
         }
@@ -224,7 +269,6 @@ function auditPaloAlto(text) {
         const ruleLines = [...text.matchAll(/^\s*set rulebase security rules\s+"?([^"\n]+)"?\s+(.*)/gim)];
         const rules = {};
         
-        // Group all commands belonging to the same rule name
         ruleLines.forEach(match => {
             const name = match[1];
             if (!rules[name]) rules[name] = "";
@@ -234,7 +278,13 @@ function auditPaloAlto(text) {
         Object.keys(rules).forEach(ruleName => {
             const body = rules[ruleName];
             if (/action allow/i.test(body) && /from any/i.test(body) && /to any/i.test(body)) {
-                findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Any-to-Any permit rule', recommendation: 'Restrict zones and source/destination addresses.' });
+                findings.push({ 
+                    severity: 'CRITICAL', 
+                    element: `Rule: ${ruleName}`, 
+                    issue: 'Permissive Access (Any-to-Any)', 
+                    recommendation: 'Restrict zones and source/destination addresses.',
+                    compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+                });
             }
         });
     }
@@ -247,15 +297,19 @@ function auditMeraki(text) {
     
     // 1. Global Checks
     if (/"syslogDefaultRule"\s*:\s*false/i.test(text)) {
-        findings.push({ severity: 'MEDIUM', element: 'Network Wide Settings', issue: 'Default syslog logging disabled', recommendation: 'Enable syslog logging for traffic visibility.' });
+        findings.push({ 
+            severity: 'HIGH', 
+            element: 'Network Wide Settings', 
+            issue: 'Default syslog logging disabled', 
+            recommendation: 'Enable syslog logging for traffic visibility.',
+            compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2'
+        });
     }
 
     // 2. JSON Object Block Extraction
-    // Safely isolates individual JSON objects { ... } to prevent cross-rule contamination
     const ruleBlocks = text.match(/\{[^{}]*?\}/g) || [];
     
     ruleBlocks.forEach((body, index) => {
-        // Order-agnostic JSON key checks
         if (/"policy"\s*:\s*"allow"/i.test(body)) {
             const srcAny = /"srcCidr"\s*:\s*"Any"/i.test(body);
             const destAny = /"destCidr"\s*:\s*"Any"/i.test(body);
@@ -263,10 +317,22 @@ function auditMeraki(text) {
             const destPortAny = /"destPort"\s*:\s*"Any"/i.test(body);
 
             if (srcAny && destAny) {
-                findings.push({ severity: 'HIGH', element: `L3 Rule Block ${index + 1}`, issue: 'Any-to-Any allow rule found', recommendation: 'Restrict CIDR blocks in the Meraki Dashboard.' });
+                findings.push({ 
+                    severity: 'CRITICAL', 
+                    element: `L3 Rule Block ${index + 1}`, 
+                    issue: 'Permissive Access (Any-to-Any)', 
+                    recommendation: 'Restrict CIDR blocks in the Meraki Dashboard.',
+                    compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+                });
             }
             if (srcPortAny && destPortAny) {
-                findings.push({ severity: 'MEDIUM', element: `L3 Rule Block ${index + 1}`, issue: 'Permissive Any-Port allow rule', recommendation: 'Define explicit TCP/UDP ports.' });
+                findings.push({ 
+                    severity: 'MEDIUM', 
+                    element: `L3 Rule Block ${index + 1}`, 
+                    issue: 'Service port set to ALL', 
+                    recommendation: 'Define explicit TCP/UDP ports.',
+                    compliance: 'PCI-DSS Req 1.2.2 / CIS 4.4'
+                });
             }
         }
     });
@@ -279,7 +345,13 @@ function auditSophos(text) {
     
     // 1. Global Checks
     if (/(Administration.*Device\s*Access.*HTTP\s*:\s*Enable|<ManageHTTP>Enable<\/ManageHTTP>)/i.test(text)) {
-        findings.push({ severity: 'HIGH', element: 'Device Access', issue: 'HTTP administration enabled', recommendation: 'Disable HTTP access on WAN and LAN zones.' });
+        findings.push({ 
+            severity: 'HIGH', 
+            element: 'Device Access', 
+            issue: 'HTTP administration enabled', 
+            recommendation: 'Disable HTTP access on WAN and LAN zones.',
+            compliance: 'PCI-DSS Req 2.2.6 / CIS 4.1'
+        });
     }
 
     // 2. XML Format Block Extraction
@@ -287,24 +359,43 @@ function auditSophos(text) {
     
     xmlRules.forEach((rule, index) => {
         const body = rule[1];
-        
-        // Try to extract the custom rule name, fallback to index if missing
         const nameMatch = body.match(/<Name>([^<]+)<\/Name>/i);
         const ruleName = nameMatch ? nameMatch[1] : `Rule ${index + 1}`;
 
-        // Strip line breaks for inner tag evaluation
         const cleanBody = body.replace(/\n/g, ' ');
         
         const isAccept = /<Action>Accept<\/Action>/i.test(cleanBody);
         const hasSourceAny = /<SourceNetworks>.*Any.*<\/SourceNetworks>/i.test(cleanBody);
         const hasDestAny = /<DestinationNetworks>.*Any.*<\/DestinationNetworks>/i.test(cleanBody);
         const hasServiceAny = /<Services>.*Any.*<\/Services>/i.test(cleanBody);
+        const loggingDisabled = /<LogTraffic>Disable<\/LogTraffic>/i.test(cleanBody);
 
         if (isAccept && hasSourceAny && hasDestAny) {
-             findings.push({ severity: 'HIGH', element: `Rule: ${ruleName}`, issue: 'Unrestricted Any-to-Any Accept', recommendation: 'Lock down source and destination networks explicitly.' });
+             findings.push({ 
+                 severity: 'CRITICAL', 
+                 element: `Rule: ${ruleName}`, 
+                 issue: 'Permissive Access (Any-to-Any)', 
+                 recommendation: 'Lock down source and destination networks explicitly.',
+                 compliance: 'PCI-DSS Req 1.2.1 / NIST 800-41'
+             });
+        }
+        if (isAccept && loggingDisabled) {
+             findings.push({ 
+                 severity: 'HIGH', 
+                 element: `Rule: ${ruleName}`, 
+                 issue: 'Traffic Logging Disabled on Allow Rule', 
+                 recommendation: 'Enable rule-level logging to maintain compliance tracks.',
+                 compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2'
+             });
         }
         if (isAccept && hasServiceAny) {
-             findings.push({ severity: 'MEDIUM', element: `Rule: ${ruleName}`, issue: 'Policy allows Any Service', recommendation: 'Define specific ports and services.' });
+             findings.push({ 
+                 severity: 'MEDIUM', 
+                 element: `Rule: ${ruleName}`, 
+                 issue: 'Service port set to ALL', 
+                 recommendation: 'Define specific ports and services.',
+                 compliance: 'PCI-DSS Req 1.2.2 / CIS 4.4'
+             });
         }
     });
 
