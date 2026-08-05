@@ -50,15 +50,37 @@ document.getElementById('auditBtn').addEventListener('click', () => {
 
 function auditFortinet(text) {
     const findings = [];
-    if (/telnet/i.test(text)) {
-        findings.push({ severity: 'danger', message: 'Insecure management protocol (Telnet) is referenced.' });
+    
+    // 1. Insecure Management Protocols (Telnet / HTTP)
+    // Looks for interfaces where HTTP or Telnet are explicitly allowed
+    if (/set allowaccess.*(?:telnet|http\b)/i.test(text)) {
+        findings.push({ severity: 'danger', message: 'Insecure management protocol (Telnet or HTTP) is enabled on one or more interfaces.' });
     }
+    
+    // 2. Logging Status
+    // Flags policies where logging is turned off
     if (/set logtraffic disable/i.test(text)) {
-        findings.push({ severity: 'warning', message: 'Traffic logging has been explicitly disabled on some policies.' });
+        findings.push({ severity: 'warning', message: 'Traffic logging has been explicitly disabled on some firewall policies.' });
     }
-    if (/0\.0\.0\.0\/0.*0\.0\.0\.0\/0/i.test(text) && !/deny/i.test(text)) {
-        findings.push({ severity: 'danger', message: 'Potential Any-to-Any (0.0.0.0/0 to 0.0.0.0/0) allow rule detected.' });
+    
+    // 3. Any-to-Any Allow Rules
+    // Looks for policies allowing source "all" to destination "all" with action "accept"
+    if (/set srcaddr "all"[\s\S]*?set dstaddr "all"[\s\S]*?set action accept/i.test(text) || 
+        (/0\.0\.0\.0\/0.*0\.0\.0\.0\/0/i.test(text) && !/deny/i.test(text))) {
+        findings.push({ severity: 'danger', message: 'Permissive Any-to-Any (Source: all, Dest: all, Action: accept) rule detected.' });
     }
+
+    // 4. Unrestricted Services
+    // Flags policies that allow all ports/protocols instead of specific services
+    if (/set service "ALL"[\s\S]*?set action accept/i.test(text)) {
+         findings.push({ severity: 'warning', message: 'Unrestricted services (Service: ALL) are allowed on one or more policies.' });
+    }
+
+    // 5. Missing Default Deny Logging (Optional but recommended)
+    if (!/set logtraffic (all|utm)/i.test(text)) {
+        findings.push({ severity: 'warning', message: 'Some policies may be missing comprehensive traffic logging (all or utm).' });
+    }
+
     return findings;
 }
 
