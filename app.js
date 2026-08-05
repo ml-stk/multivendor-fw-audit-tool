@@ -43,18 +43,23 @@ document.getElementById('auditBtn').addEventListener('click', () => {
                         <th>Element</th>
                         <th>Security Issue</th>
                         <th>Recommendation</th>
+                        <th>Standard / Framework</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
         findings.forEach(f => {
+            // Provide a fallback if a finding hasn't been mapped to a standard yet
+            const complianceText = f.compliance ? f.compliance : 'Best Practice';
+            
             tableHTML += `
                 <tr>
                     <td><span class="badge badge-${f.severity.toLowerCase()}">${f.severity.toUpperCase()}</span></td>
                     <td><strong>${f.element}</strong></td>
                     <td>${f.issue}</td>
                     <td>${f.recommendation}</td>
+                    <td><span class="compliance-tag">${complianceText}</span></td>
                 </tr>
             `;
         });
@@ -71,16 +76,16 @@ document.getElementById('auditBtn').addEventListener('click', () => {
 
 // CSV Generator
 function downloadCSV(findings) {
-    let csvContent = "Severity,Element,Security Issue,Recommendation\n";
+    let csvContent = "Severity,Element,Security Issue,Recommendation,Standard\n";
     findings.forEach(f => {
-        // Wrap in quotes to handle commas in text
-        csvContent += `"${f.severity}","${f.element}","${f.issue}","${f.recommendation}"\n`;
+        const complianceText = f.compliance ? f.compliance : 'Best Practice';
+        csvContent += `"${f.severity}","${f.element}","${f.issue}","${f.recommendation}","${complianceText}"\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'firewall_audit_results.csv');
+    link.setAttribute('download', 'firewall_compliance_audit.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -119,7 +124,13 @@ function auditFortinet(text) {
 
             // 5. Evaluate Logic
             if (loggingDisabled) {
-                findings.push({ severity: 'MEDIUM', element: `Policy ${id}`, issue: 'Traffic logging disabled', recommendation: 'Set logtraffic to "utm" or "all" to maintain audit trails.' });
+                findings.push({ 
+                    severity: 'MEDIUM', 
+                    element: `Policy ${id}`, 
+                    issue: 'Traffic logging disabled', 
+                    recommendation: 'Set logtraffic to "utm" or "all" to maintain audit trails.',
+                    compliance: 'PCI-DSS Req 10.2.1 / CIS 8.2' // <-- New standard mapping
+                });
             }
             if (isAccept && hasSrcAll && hasDstAll) {
                 findings.push({ severity: 'HIGH', element: `Policy ${id}`, issue: 'Any-to-Any Permit rule', recommendation: 'Restrict source and destination to explicit networks/IPs.' });
