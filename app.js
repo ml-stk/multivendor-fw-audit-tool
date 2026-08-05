@@ -91,34 +91,45 @@ function downloadCSV(findings) {
 function auditFortinet(text) {
     const findings = [];
     
-    // Global Interface Checks
-    if (/set allowaccess.*(?:telnet|http\b)/i.test(text)) {
+    // 1. Global Interface Checks (Order independent)
+    if (/set allowaccess[^\n]*(?:telnet|http\b)/i.test(text)) {
         findings.push({ severity: 'HIGH', element: 'Global / Interfaces', issue: 'Insecure management protocol (Telnet/HTTP)', recommendation: 'Disable plaintext protocols and enforce SSH/HTTPS.' });
     }
 
-    // Isolate the Firewall Policy Section
-    const policySectionMatch = text.match(/config firewall policy([\s\S]*?)end/i);
-    if (policySectionMatch) {
-        const policySection = policySectionMatch[1];
+    // 2. Isolate Firewall Policy Sections
+    // Uses multi-line flags (m) to safely capture blocks across all VDOMs
+    const policyBlocks = [...text.matchAll(/config firewall policy\b([\s\S]*?)^\s*end\b/gim)];
+    
+    policyBlocks.forEach(blockMatch => {
+        const policySection = blockMatch[1];
         
-        // Extract every individual policy block: "edit <ID> ... next"
-        const policies = [...policySection.matchAll(/edit\s+(\d+)([\s\S]*?)next/gi)];
+        // 3. Extract every individual policy block: "edit <ID> ... next"
+        const policies = [...policySection.matchAll(/^\s*edit\s+(\d+)\b([\s\S]*?)^\s*next\b/gim)];
 
         policies.forEach(p => {
             const id = p[1];
-            const body = p[2];
+            const body = p[2]; // The raw text inside this specific policy
 
-            if (/set logtraffic disable/i.test(body)) {
+            // 4. Test for conditions independently (solves the line-order bug)
+            const isAccept = /set action accept/i.test(body);
+            const hasServiceAll = /set service "ALL"/i.test(body);
+            const hasSrcAll = /set srcaddr "all"/i.test(body);
+            const hasDstAll = /set dstaddr "all"/i.test(body);
+            const loggingDisabled = /set logtraffic disable/i.test(body);
+
+            // 5. Evaluate Logic
+            if (loggingDisabled) {
                 findings.push({ severity: 'MEDIUM', element: `Policy ${id}`, issue: 'Traffic logging disabled', recommendation: 'Set logtraffic to "utm" or "all" to maintain audit trails.' });
             }
-            if (/set srcaddr "all"[\s\S]*?set dstaddr "all"[\s\S]*?set action accept/i.test(body)) {
+            if (isAccept && hasSrcAll && hasDstAll) {
                 findings.push({ severity: 'HIGH', element: `Policy ${id}`, issue: 'Any-to-Any Permit rule', recommendation: 'Restrict source and destination to explicit networks/IPs.' });
             }
-            if (/set service "ALL"[\s\S]*?set action accept/i.test(body)) {
+            if (isAccept && hasServiceAll) {
                 findings.push({ severity: 'MEDIUM', element: `Policy ${id}`, issue: 'Service port set to ALL', recommendation: 'Define explicit TCP/UDP ports required for the application.' });
             }
         });
-    }
+    });
+
     return findings;
 }
 
