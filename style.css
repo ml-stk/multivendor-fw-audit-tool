@@ -55,19 +55,12 @@ input[type="file"] {
     border: 1px solid var(--border);
 }
 
-.file-upload-btn:hover {
-    background: #dde0e3;
-}
+.file-upload-btn:hover { background: #dde0e3; }
 
 #fileName {
     margin-left: 10px;
     font-size: 0.9em;
     color: #666;
-}
-
-.audit-modules label {
-    margin-right: 15px;
-    font-weight: 500;
 }
 
 .primary-btn {
@@ -80,13 +73,21 @@ input[type="file"] {
     font-size: 1em;
 }
 
-.primary-btn:hover {
-    background: #004494;
+.primary-btn:hover { background: #004494; }
+
+.secondary-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
 }
 
-.hidden {
-    display: none;
-}
+.secondary-btn:hover { background: #218838; }
+
+.hidden { display: none; }
 
 .results-section {
     background: var(--card-bg);
@@ -95,24 +96,49 @@ input[type="file"] {
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 
-.result-block {
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 10px;
     margin-bottom: 20px;
-    padding: 15px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
 }
+
+.results-header h2 { margin: 0; color: var(--primary); }
+
+.result-block { margin-bottom: 30px; }
 
 .result-block h3 {
     margin-top: 0;
-    color: var(--primary);
-    border-bottom: 2px solid var(--primary);
-    padding-bottom: 5px;
+    color: #444;
+    font-size: 1.2em;
+    margin-bottom: 15px;
 }
 
-pre {
-    background: #2b2b2b;
-    color: #f8f8f2;
-    padding: 15px;
-    border-radius: 4px;
-    overflow-x: auto;
+/* Human-Readable Table Styles */
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.audit-table th, .audit-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.audit-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #333;
+}
+
+.audit-table tr:hover { background-color: #f1f3f5; }
+
+.summary-text {
+    font-style: italic;
+    color: #666;
+    margin-bottom: 15px;
 }
