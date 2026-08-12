@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Execute Audit
     runAuditBtn.addEventListener('click', () => {
         if (!fileContent) {
             alert("Please upload a configuration file first.");
@@ -41,177 +40,223 @@ document.addEventListener('DOMContentLoaded', () => {
         displayReadableResults(results);
     });
 
-    // Generate PDF Action
     downloadPdfBtn.addEventListener('click', () => {
         const element = document.getElementById('resultsSection');
-        // Hide the download button during PDF generation so it doesn't appear in the document
         downloadPdfBtn.style.display = 'none';
 
         const opt = {
             margin:       0.5,
-            filename:     'Network_Audit_Report.pdf',
+            filename:     'Network_Compliance_Audit.pdf',
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { scale: 2 },
-            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' } // Changed to landscape for wide tables
         };
 
         html2pdf().set(opt).from(element).save().then(() => {
-            // Restore button after saving
             downloadPdfBtn.style.display = 'block';
         });
     });
 
-    // Core Analysis Engine
+    // --- Core Evaluation Engine ---
     function analyzeConfig(config, vendor, modules) {
-        let findings = {};
-        if (modules.Security) findings.Security = extractPolicies(config, vendor);
-        if (modules.Routing) findings.Routing = extractRouting(config, vendor);
-        if (modules['SD-WAN']) findings['SD-WAN'] = extractSdWan(config, vendor);
-        if (modules.VPN) findings.VPN = extractVpn(config, vendor);
+        let findings = { metrics: { critical: 0, high: 0, medium: 0, passed: 0 }, categories: {} };
+        
+        if (modules.Security) findings.categories.Security = evaluatePolicies(config, vendor, findings.metrics);
+        if (modules.Routing) findings.categories.Routing = evaluateRouting(config, vendor, findings.metrics);
+        if (modules['SD-WAN']) findings.categories['SD-WAN'] = evaluateSdWan(config, vendor, findings.metrics);
+        if (modules.VPN) findings.categories.VPN = evaluateVpn(config, vendor, findings.metrics);
+        
         return findings;
     }
 
-    // --- Parser Modules ---
-    function extractPolicies(config, vendor) {
-        let data = [];
+    // Evaluator: Security Policies
+    function evaluatePolicies(config, vendor, metrics) {
+        let results = [];
         const lines = config.split('\n');
-        lines.forEach((line, index) => {
-            if (line.toLowerCase().includes('policy') || line.toLowerCase().includes('permit') || line.toLowerCase().includes('deny')) {
-                data.push({ lineNum: index + 1, detail: line.trim() });
-            }
-        });
-        return data;
-    }
-
-    function extractRouting(config, vendor) {
-        let data = [];
-        const lines = config.split('\n');
-        lines.forEach((line, index) => {
-            const l = line.toLowerCase();
-            if (l.includes('router bgp') || l.includes('router ospf') || l.includes('ip route') || l.includes('config router static')) {
-                let type = l.includes('bgp') ? 'BGP' : l.includes('ospf') ? 'OSPF' : 'Static Route';
-                data.push({ lineNum: index + 1, protocol: type, detail: line.trim() });
-            }
-        });
-        return data;
-    }
-
-    function extractSdWan(config, vendor) {
-        let data = [];
-        const lines = config.split('\n');
-        let inSdWanContext = false;
         
-        lines.forEach((line, index) => {
-            const l = line.trim().toLowerCase();
-            if (l === 'config system sdwan' || l.includes('sd-wan')) inSdWanContext = true;
-            else if (inSdWanContext && l === 'end') inSdWanContext = false;
-
-            if (inSdWanContext && l !== 'config system sdwan') {
-                data.push({ lineNum: index + 1, detail: line.trim() });
-            }
-        });
-        return data;
-    }
-
-    function extractVpn(config, vendor) {
-        let data = [];
-        const lines = config.split('\n');
-        lines.forEach((line, index) => {
+        // Mock analysis logic for overly permissive rules
+        let hasDenyAll = false;
+        
+        lines.forEach((line) => {
             const l = line.toLowerCase();
-            if (l.includes('crypto isakmp') || l.includes('config vpn ipsec') || l.includes('webvpn') || l.includes('config vpn ssl web')) {
-                let type = l.includes('ssl') || l.includes('webvpn') ? 'SSL/Client VPN' : 'IPsec/Site-to-Site';
-                data.push({ lineNum: index + 1, type: type, detail: line.trim() });
+            if (l.includes('policy') || l.includes('permit') || l.includes('deny')) {
+                if ((l.includes('permit') || l.includes('accept')) && l.includes('any') && (l.includes('all') || l.includes('any'))) {
+                    metrics.critical++;
+                    results.push({
+                        severity: 'critical',
+                        finding: 'Overly permissive "Any-Any" allow rule detected.',
+                        recommendation: 'Restrict inbound/outbound traffic to specific source/destination IPs and required ports only. Implement least privilege access.',
+                        cliFix: vendor === 'fortigate' ? 'set srcaddr "Specific_Subnet"\nset dstaddr "Specific_Destination"' : 'permit tcp host [SRC] host [DST] eq [PORT]',
+                        compliance: 'PCI DSS 4.0 (Req 1.2, 7.1.2), CIS Benchmark Firewall Ruleset'
+                    });
+                }
+                if (l.includes('deny') && l.includes('any')) {
+                    hasDenyAll = true;
+                }
             }
         });
-        return data;
+
+        if (!hasDenyAll) {
+            metrics.high++;
+            results.push({
+                severity: 'high',
+                finding: 'Missing explicit "Deny-All" cleanup rule at the bottom of the ACL/Policy.',
+                recommendation: 'Add an explicit deny rule to log and drop all unmatched traffic.',
+                cliFix: vendor === 'fortigate' ? 'edit 0\nset action deny\nset logtraffic all' : 'deny ip any any log',
+                compliance: 'PCI DSS 4.0 (Req 1.2), CIS Benchmark'
+            });
+        } else {
+            metrics.passed++;
+            results.push({ severity: 'pass', finding: 'Explicit Deny-All rule exists.', recommendation: '-', cliFix: '', compliance: 'PCI DSS 4.0 (Req 1.2)' });
+        }
+        return results;
     }
+
+    // Evaluator: VPN Parameters
+    function evaluateVpn(config, vendor, metrics) {
+        let results = [];
+        const lines = config.split('\n');
+        
+        lines.forEach((line) => {
+            const l = line.toLowerCase();
+            // Check for weak cryptographic protocols
+            if (l.includes('crypto') || l.includes('vpn') || l.includes('proposal')) {
+                if (l.includes('des') || l.includes('3des') || l.includes('md5') || l.includes('sha1')) {
+                    metrics.critical++;
+                    results.push({
+                        severity: 'critical',
+                        finding: `Weak encryption/hashing algorithm detected in VPN config: ${line.trim()}`,
+                        recommendation: 'Upgrade immediately to AES-256 for encryption and SHA-256/SHA-384 for hashing. Disable insecure protocols.',
+                        cliFix: vendor === 'fortigate' ? 'set proposal aes256-sha256' : 'crypto ikev2 proposal DEFAULT\n encryption aes-cbc-256\n integrity sha256',
+                        compliance: 'PCI DSS 4.0 (Req 4.2 - Strong Cryptography), NIST SP 800-52 Rev 2'
+                    });
+                }
+                if (l.includes('sslv3') || l.includes('tls1.0') || l.includes('tls 1.0')) {
+                    metrics.high++;
+                    results.push({
+                        severity: 'high',
+                        finding: 'Deprecated TLS/SSL version enabled for WebVPN/SSLVPN.',
+                        recommendation: 'Disable SSLv3 and TLS 1.0/1.1. Mandate TLS 1.2 or TLS 1.3.',
+                        cliFix: vendor === 'fortigate' ? 'set ssl-min-proto-version tls1-2' : 'ssl server-version tlsv1.2',
+                        compliance: 'PCI DSS 4.0 (Req 4.2)'
+                    });
+                }
+            }
+        });
+
+        if (results.length === 0) {
+            metrics.passed++;
+            results.push({ severity: 'pass', finding: 'No weak VPN cryptographic parameters detected.', recommendation: '-', cliFix: '', compliance: 'PCI DSS 4.0 (Req 4.2)' });
+        }
+        return results;
+    }
+
+    // Evaluator: Routing (Mocked for demonstration)
+    function evaluateRouting(config, vendor, metrics) {
+        let results = [];
+        if (config.toLowerCase().includes('router bgp') && !config.toLowerCase().includes('password')) {
+            metrics.medium++;
+            results.push({
+                severity: 'medium',
+                finding: 'BGP routing protocol configured without neighbor authentication.',
+                recommendation: 'Configure MD5 or SHA authentication for all BGP neighbors to prevent route hijacking.',
+                cliFix: 'neighbor x.x.x.x password [STRONG_PASSWORD]',
+                compliance: 'CIS Benchmark, NIST SP 800-54'
+            });
+        }
+        return results.length ? results : [{ severity: 'pass', finding: 'Routing configurations align with baselines.', recommendation: '-', cliFix: '', compliance: 'N/A' }];
+    }
+
+    // Evaluator: SD-WAN (Mocked for demonstration)
+    function evaluateSdWan(config, vendor, metrics) {
+        let results = [];
+        if (vendor === 'versa' && !config.toLowerCase().includes('sla-class')) {
+            metrics.medium++;
+            results.push({
+                severity: 'medium',
+                finding: 'SD-WAN traffic steering lacks explicit SLA class bindings.',
+                recommendation: 'Define SLA parameters (latency, jitter, packet loss) to ensure reliable failover for critical applications.',
+                cliFix: 'set sla-class "Critical-Apps" latency 150 jitter 30',
+                compliance: 'Vendor Best Practices'
+            });
+        }
+        return results.length ? results : [{ severity: 'pass', finding: 'SD-WAN parameters appear properly configured.', recommendation: '-', cliFix: '', compliance: 'N/A' }];
+    }
+
 
     // --- Human-Readable UI Renderer ---
     function displayReadableResults(findings) {
         resultsSection.classList.remove('hidden');
         resultsContent.innerHTML = '';
 
-        for (const [moduleName, dataArray] of Object.entries(findings)) {
+        // Render Scorecard
+        const scorecardHtml = `
+            <div class="scorecard">
+                <div class="score-card score-critical">Critical Risks: ${findings.metrics.critical}</div>
+                <div class="score-card score-high">High Risks: ${findings.metrics.high}</div>
+                <div class="score-card score-medium">Medium Risks: ${findings.metrics.medium}</div>
+                <div class="score-card score-pass">Checks Passed: ${findings.metrics.passed}</div>
+            </div>
+        `;
+        resultsContent.innerHTML += scorecardHtml;
+
+        for (const [moduleName, dataArray] of Object.entries(findings.categories)) {
             const block = document.createElement('div');
             block.className = 'result-block';
             
             const title = document.createElement('h3');
-            title.textContent = `${moduleName} Configuration`;
+            title.textContent = `${moduleName} Security Posture`;
             block.appendChild(title);
 
-            if (dataArray.length === 0) {
-                const noData = document.createElement('p');
-                noData.className = 'summary-text';
-                noData.textContent = `No ${moduleName.toLowerCase()} configurations were detected in the uploaded file.`;
-                block.appendChild(noData);
-            } else {
-                const summary = document.createElement('p');
-                summary.className = 'summary-text';
-                summary.textContent = `Identified ${dataArray.length} relevant configuration entries.`;
-                block.appendChild(summary);
+            const table = document.createElement('table');
+            table.className = 'audit-table';
+            
+            const thead = `
+                <thead>
+                    <tr>
+                        <th>Severity</th>
+                        <th>Observation / Finding</th>
+                        <th>Recommendation & Remediation</th>
+                        <th>Compliance Standard</th>
+                    </tr>
+                </thead>
+            `;
+            table.innerHTML = thead;
 
-                const table = document.createElement('table');
-                table.className = 'audit-table';
+            const tbody = document.createElement('tbody');
+            
+            dataArray.forEach(item => {
+                const tr = document.createElement('tr');
                 
-                // Build dynamic headers based on the module
-                let headers = [];
-                if (moduleName === 'Routing') headers = ['Line', 'Protocol', 'Configuration Detail'];
-                else if (moduleName === 'VPN') headers = ['Line', 'VPN Type', 'Configuration Detail'];
-                else headers = ['Line', 'Configuration Detail'];
+                // Severity Badge
+                const tdSeverity = document.createElement('td');
+                tdSeverity.innerHTML = `<span class="badge ${item.severity}">${item.severity.toUpperCase()}</span>`;
+                tr.appendChild(tdSeverity);
 
-                const thead = document.createElement('thead');
-                const trHead = document.createElement('tr');
-                headers.forEach(text => {
-                    const th = document.createElement('th');
-                    th.textContent = text;
-                    trHead.appendChild(th);
-                });
-                thead.appendChild(trHead);
-                table.appendChild(thead);
+                // Finding
+                const tdFinding = document.createElement('td');
+                tdFinding.textContent = item.finding;
+                tr.appendChild(tdFinding);
 
-                const tbody = document.createElement('tbody');
-                // Limit to first 20 entries to prevent massive tables, but note the truncation
-                const displayLimit = 20;
-                const itemsToDisplay = dataArray.slice(0, displayLimit);
-
-                itemsToDisplay.forEach(item => {
-                    const tr = document.createElement('tr');
-                    
-                    const tdLine = document.createElement('td');
-                    tdLine.textContent = item.lineNum;
-                    tr.appendChild(tdLine);
-
-                    if (moduleName === 'Routing') {
-                        const tdProto = document.createElement('td');
-                        tdProto.textContent = item.protocol;
-                        tr.appendChild(tdProto);
-                    }
-                    if (moduleName === 'VPN') {
-                        const tdType = document.createElement('td');
-                        tdType.textContent = item.type;
-                        tr.appendChild(tdType);
-                    }
-
-                    const tdDetail = document.createElement('td');
-                    // Clean up string formatting for readability
-                    tdDetail.textContent = item.detail.replace(/[{}]/g, ''); 
-                    tr.appendChild(tdDetail);
-
-                    tbody.appendChild(tr);
-                });
-
-                table.appendChild(tbody);
-                block.appendChild(table);
-
-                if (dataArray.length > displayLimit) {
-                    const truncationNotice = document.createElement('p');
-                    truncationNotice.style.fontSize = '0.9em';
-                    truncationNotice.style.color = '#888';
-                    truncationNotice.textContent = `* Showing first ${displayLimit} entries. ${dataArray.length - displayLimit} additional lines hidden for readability.`;
-                    block.appendChild(truncationNotice);
+                // Recommendation & CLI Fix
+                const tdRec = document.createElement('td');
+                let recHtml = item.recommendation;
+                if (item.cliFix) {
+                    recHtml += `<span class="fix-code">${item.cliFix.replace(/\n/g, '<br>')}</span>`;
                 }
-            }
+                tdRec.innerHTML = recHtml;
+                tr.appendChild(tdRec);
 
+                // Compliance Mapping
+                const tdComp = document.createElement('td');
+                tdComp.textContent = item.compliance;
+                tr.appendChild(tdComp);
+
+                tbody.appendChild(tr);
+            });
+
+            table.appendChild(tbody);
+            block.appendChild(table);
             resultsContent.appendChild(block);
         }
     }
