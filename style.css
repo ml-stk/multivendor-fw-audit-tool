@@ -1,46 +1,77 @@
 :root {
-    --bg-color: #f4f6f8;
+    --primary: #0056b3;
+    --background: #f4f7f6;
     --card-bg: #ffffff;
-    --text-color: #333333;
-    --border-color: #e0e0e0;
+    --text-main: #333333;
+    --border: #dddddd;
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-color);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--background);
+    color: var(--text-main);
     margin: 0;
-    padding: 2rem;
+    padding: 20px;
 }
 
 .container {
-    max-width: 900px;
+    max-width: 1000px;
     margin: 0 auto;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.upload-section {
     background: var(--card-bg);
-    padding: 2rem;
+    padding: 25px;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
 }
 
-header { border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; padding-bottom: 1rem; }
-
-.config-section { margin-bottom: 1.5rem; }
-.config-section select { width: 100%; padding: 10px; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; }
-
-.upload-card {
-    padding: 1.5rem;
-    border: 2px dashed #cccccc;
-    border-radius: 6px;
-    background: #fafafa;
-    margin-bottom: 1.5rem;
+.config-inputs, .audit-modules {
+    margin-bottom: 20px;
 }
 
-.subtext { font-size: 0.85em; color: #666; margin-bottom: 1rem; }
-.hidden { display: none; }
-.controls-center { text-align: center; margin-bottom: 1.5rem; }
+select {
+    padding: 8px;
+    margin-right: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
 
-.btn {
-    background-color: #0056b3;
+input[type="file"] {
+    display: none;
+}
+
+.file-upload-btn {
+    background: #e9ecef;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+}
+
+.file-upload-btn:hover {
+    background: #dde0e3;
+}
+
+#fileName {
+    margin-left: 10px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.audit-modules label {
+    margin-right: 15px;
+    font-weight: 500;
+}
+
+.primary-btn {
+    background: var(--primary);
     color: white;
     border: none;
     padding: 10px 20px;
@@ -48,92 +79,40 @@ header { border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; pa
     cursor: pointer;
     font-size: 1em;
 }
-.btn:hover { background-color: #004494; }
-.btn:disabled { background-color: #cccccc; cursor: not-allowed; }
 
-.finding-card {
-    padding: 1rem;
-    border-left: 5px solid #dc3545;
-    background: #fff5f5;
-    margin-bottom: 10px;
+.primary-btn:hover {
+    background: #004494;
+}
+
+.hidden {
+    display: none;
+}
+
+.results-section {
+    background: var(--card-bg);
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.result-block {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.result-block h3 {
+    margin-top: 0;
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 5px;
+}
+
+pre {
+    background: #2b2b2b;
+    color: #f8f8f2;
+    padding: 15px;
     border-radius: 4px;
-}
-.finding-card.warning {
-    border-left-color: #ffc107;
-    background: #fffdf0;
-}
-.finding-card.safe {
-    border-left-color: #28a745;
-    background: #f0fff4;
-}
-/* --- Output UI Styles --- */
-.alert-banner {
-    background-color: #fce8e8;
-    color: #c92a2a;
-    padding: 15px 20px;
-    border-radius: 4px;
-    font-weight: bold;
-    margin-bottom: 1.5rem;
-}
-
-.actions-row {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 1rem;
-}
-
-.btn-primary {
-    background-color: #0056b3;
-    color: white;
-    font-weight: bold;
-    border-radius: 4px;
-    padding: 8px 16px;
-    border: none;
-    cursor: pointer;
-}
-.btn-primary:hover { background-color: #004494; }
-
-.audit-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95em;
-    background: white;
-}
-
-.audit-table th, .audit-table td {
-    padding: 12px 15px;
-    text-align: left;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.audit-table th {
-    font-weight: bold;
-    color: #333;
-    border-bottom: 2px solid #ccc;
-}
-
-.badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-    font-weight: bold;
-    text-transform: uppercase;
-}
-
-.badge-critical { background-color: #e53935; color: white; }
-.badge-high { background-color: #ff9800; color: white; }
-.badge-medium { background-color: #ffeb3b; color: #333; }
-.badge-low { background-color: #03a9f4; color: white; }
-}
-
-.compliance-tag {
-    display: inline-block;
-    padding: 3px 6px;
-    background-color: #f1f3f5;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-size: 0.85em;
-    font-family: monospace;
-    color: #495057;
+    overflow-x: auto;
 }
