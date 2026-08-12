@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-Vendor Firewall & Network Audit Tool</title>
     <link rel="stylesheet" href="style.css">
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -14,7 +16,7 @@
         </header>
 
         <main>
-            <section class="upload-section">
+            <section class="upload-section" id="uploadSection">
                 <div class="config-inputs">
                     <label for="vendor">Platform:</label>
                     <select id="vendor">
@@ -39,10 +41,16 @@
                 <button id="runAuditBtn" class="primary-btn">Run Audit</button>
             </section>
 
-            <section id="resultsSection" class="results-section hidden">
-                <h2>Audit Results</h2>
-                <div id="resultsContent"></div>
-            </section>
+            <!-- Added wrapper for PDF generation -->
+            <div id="reportContainer">
+                <section id="resultsSection" class="results-section hidden">
+                    <div class="results-header">
+                        <h2>Audit Report</h2>
+                        <button id="downloadPdfBtn" class="secondary-btn">Download PDF</button>
+                    </div>
+                    <div id="resultsContent"></div>
+                </section>
+            </div>
         </main>
     </div>
     <script src="app.js"></script>
