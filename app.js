@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
         displayReadableResults(results);
     });
 
-    // PDF Print Fix: Legal format, landscape, page-break CSS mode
     downloadPdfBtn.addEventListener('click', () => {
         const element = document.getElementById('resultsSection');
         downloadPdfBtn.style.display = 'none';
@@ -68,8 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return findings;
     }
 
-    // --- Smart Block Extractor ---
-    // Grabs hierarchical config blocks rather than single lines
+    // --- Smart Block Extractor (For Routing/VPN) ---
     function extractBlocks(lines, startKeywords, endKeyword) {
         let blocks = [];
         let currentBlock = [];
@@ -77,16 +75,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         lines.forEach(line => {
             const l = line.trim().toLowerCase();
-            
-            // Check if line starts a block
             if (!inBlock && startKeywords.some(kw => l.startsWith(kw))) {
                 inBlock = true;
                 currentBlock = [];
             }
-            
             if (inBlock) {
                 currentBlock.push(line.trim());
-                // Check if line ends a block
                 if (l === endKeyword || l === '!') {
                     blocks.push(currentBlock.join('\n'));
                     inBlock = false;
@@ -96,42 +90,89 @@ document.addEventListener('DOMContentLoaded', () => {
         return blocks;
     }
 
-    // Evaluator: Security Policies
+    // --- Security Policies Evaluator (Granular Rule-by-Rule Analysis) ---
     function evaluatePolicies(lines, vendor, metrics) {
         let results = [];
-        // FortiGate policies end with 'end', Cisco ACLs usually break by empty space or '!'
-        const blockEnd = vendor === 'fortigate' ? 'end' : '!';
-        const startKeys = vendor === 'fortigate' ? ['config firewall policy'] : ['access-list', 'ip access-list'];
         
-        const blocks = extractBlocks(lines, startKeys, blockEnd);
+        if (vendor === 'fortigate') {
+            let inPolicyContext = false;
+            let currentPolicyId = 'Unknown';
+            let currentBlock = [];
 
-        if (blocks.length === 0) {
-            return [{ severity: 'info', finding: 'No security policy blocks detected.', configSnippet: '', recommendation: '-', compliance: '-' }];
+            lines.forEach(line => {
+                const l = line.trim().toLowerCase();
+                
+                // Enter Firewall Policy Context
+                if (l === 'config firewall policy') {
+                    inPolicyContext = true;
+                } 
+                // Exit Firewall Policy Context
+                else if (inPolicyContext && l === 'end' && currentBlock.length === 0) {
+                    inPolicyContext = false;
+                } 
+                // Inside Context Processing
+                else if (inPolicyContext) {
+                    if (l.startsWith('edit ')) {
+                        // Analyze previous rule if one exists
+                        if (currentBlock.length > 0) evaluateRuleBlock(currentPolicyId, currentBlock.join('\n'), results, metrics);
+                        // Start new rule
+                        currentPolicyId = l.split(' ')[1];
+                        currentBlock = [];
+                    } else if (l === 'next' || l === 'end') {
+                        // Close and analyze current rule
+                        if (currentBlock.length > 0) evaluateRuleBlock(currentPolicyId, currentBlock.join('\n'), results, metrics);
+                        currentBlock = [];
+                        if (l === 'end') inPolicyContext = false;
+                    } else {
+                        currentBlock.push(line.trim());
+                    }
+                }
+            });
+        } else {
+            // Cisco / Generic logic (Line-by-line ACEs)
+            lines.forEach(line => {
+                const l = line.trim().toLowerCase();
+                if (l.startsWith('access-list') || l.startsWith('permit') || l.startsWith('deny')) {
+                    let parts = l.split(' ');
+                    let ruleId = l.startsWith('access-list') ? parts[1] : 'Named-ACL/Interface-Rule';
+                    evaluateRuleBlock(ruleId, l, results, metrics);
+                }
+            });
         }
 
-        blocks.forEach(block => {
-            const b = block.toLowerCase();
-            if ((b.includes('set action accept') || b.includes('permit')) && b.includes('all')) {
-                metrics.critical++;
-                results.push({
-                    severity: 'critical',
-                    finding: 'Overly permissive rule detected.',
-                    configSnippet: block,
-                    recommendation: 'Restrict traffic to specific IPs/ports. Implement least privilege access.',
-                    compliance: 'PCI DSS 4.0 (Req 1.2.1), CIS Benchmark'
-                });
-            } else {
-                metrics.passed++;
-                results.push({
-                    severity: 'pass',
-                    finding: 'Policy reviewed: Scope is constrained.',
-                    configSnippet: block,
-                    recommendation: '-',
-                    compliance: 'PCI DSS 4.0 (Req 1.2)'
-                });
-            }
-        });
+        if (results.length === 0) {
+            return [{ severity: 'info', finding: '<strong>No security policies detected.</strong>', configSnippet: '', recommendation: '-', compliance: '-' }];
+        }
         return results;
+    }
+
+    // Helper to evaluate an individual Rule/Policy ID
+    function evaluateRuleBlock(ruleId, blockText, results, metrics) {
+        const b = blockText.toLowerCase();
+        
+        if ((b.includes('set action accept') || b.includes('permit')) && (b.includes('all') || b.includes('any'))) {
+            metrics.critical++;
+            results.push({
+                severity: 'critical',
+                finding: `<strong>Policy/Rule ID: ${ruleId}</strong><br><span style="color: #dc3545; font-size: 0.9em;">Issue: Overly permissive rule detected (Any/All traffic allowed).</span>`,
+                configSnippet: '', // Intentionally blank so we don't display the code block
+                recommendation: 'Restrict traffic to specific source/destination IPs and required ports. Implement least privilege access.',
+                compliance: 'PCI DSS 4.0 (Req 1.2.1), CIS Benchmark'
+            });
+        } else if (b.includes('set action deny') || b.includes('deny')) {
+            // Explicit denies are good. Log as pass but skip rendering to prevent dashboard clutter.
+            metrics.passed++;
+        } else {
+            metrics.passed++;
+            // Optional: You can comment out the push() below if you only want to display failures in the table
+            results.push({
+                severity: 'pass',
+                finding: `<strong>Policy/Rule ID: ${ruleId}</strong><br><span style="color: #28a745; font-size: 0.9em;">Status: Policy reviewed and scope is constrained.</span>`,
+                configSnippet: '', 
+                recommendation: '-',
+                compliance: 'PCI DSS 4.0 (Req 1.2)'
+            });
+        }
     }
 
     // Evaluator: VPN
@@ -141,7 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const startKeys = ['config vpn ipsec', 'config vpn ssl', 'crypto isakmp', 'crypto map'];
         
         const blocks = extractBlocks(lines, startKeys, blockEnd);
-
         if (blocks.length === 0) return [];
 
         blocks.forEach(block => {
@@ -150,16 +190,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 metrics.critical++;
                 results.push({
                     severity: 'critical',
-                    finding: 'Weak cryptography (DES/3DES/MD5/SHA1) detected in VPN configuration.',
+                    finding: '<strong>Weak cryptography (DES/3DES/MD5/SHA1) detected in VPN configuration.</strong>',
                     configSnippet: block,
-                    recommendation: 'Upgrade to AES-256 and SHA-256/384.',
+                    recommendation: 'Upgrade to AES-256 for encryption and SHA-256/384 for hashing.',
                     compliance: 'PCI DSS 4.0 (Req 4.2), NIST SP 800-52'
                 });
             } else if (b.includes('sslv3') || b.includes('tls1-0')) {
                 metrics.high++;
                 results.push({
                     severity: 'high',
-                    finding: 'Deprecated TLS/SSL protocol enabled.',
+                    finding: '<strong>Deprecated TLS/SSL protocol enabled.</strong>',
                     configSnippet: block,
                     recommendation: 'Force TLS 1.2 or TLS 1.3 only.',
                     compliance: 'PCI DSS 4.0 (Req 4.2)'
@@ -168,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 metrics.passed++;
                 results.push({
                     severity: 'pass',
-                    finding: 'VPN cryptography parameters meet baseline.',
+                    finding: '<strong>VPN cryptography parameters meet baseline.</strong>',
                     configSnippet: block,
                     recommendation: '-',
                     compliance: 'PCI DSS 4.0 (Req 4.2)'
@@ -192,16 +232,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 metrics.medium++;
                 results.push({
                     severity: 'medium',
-                    finding: 'BGP routing configured without neighbor authentication.',
+                    finding: '<strong>BGP routing configured without neighbor authentication.</strong>',
                     configSnippet: block,
-                    recommendation: 'Configure MD5/SHA authentication for BGP neighbors.',
+                    recommendation: 'Configure MD5/SHA authentication for BGP neighbors to prevent route hijacking.',
                     compliance: 'CIS Benchmark, NIST SP 800-54'
                 });
             } else {
                 metrics.passed++;
                 results.push({
                     severity: 'pass',
-                    finding: 'Routing parameters align with baseline.',
+                    finding: '<strong>Routing parameters align with baseline.</strong>',
                     configSnippet: block,
                     recommendation: '-',
                     compliance: 'CIS Benchmark'
@@ -224,89 +264,87 @@ document.addEventListener('DOMContentLoaded', () => {
             metrics.passed++;
             results.push({
                 severity: 'pass',
-                finding: 'SD-WAN zone/rule extracted successfully.',
+                finding: '<strong>SD-WAN zone/rule extracted successfully.</strong>',
                 configSnippet: block,
                 recommendation: 'Ensure SLA parameters are tightly bound to critical app traffic.',
-                compliance: 'Vendor Best Practices'
+                compliance: 'Best Practice'
             });
         });
         return results;
     }
 
-    // --- Human-Readable UI Renderer ---
+    // --- Dynamic Renderer ---
     function displayReadableResults(findings) {
-        resultsSection.classList.remove('hidden');
         resultsContent.innerHTML = '';
+        const m = findings.metrics;
+        
+        // Update Dashboard
+        document.getElementById('m-crit').textContent = m.critical;
+        document.getElementById('m-high').textContent = m.high;
+        document.getElementById('m-med').textContent = m.medium;
+        document.getElementById('m-pass').textContent = m.passed;
 
-        const scorecardHtml = `
-            <div class="scorecard">
-                <div class="score-card score-critical">Critical Risks: ${findings.metrics.critical}</div>
-                <div class="score-card score-high">High Risks: ${findings.metrics.high}</div>
-                <div class="score-card score-medium">Medium Risks: ${findings.metrics.medium}</div>
-                <div class="score-card score-pass">Checks Passed: ${findings.metrics.passed}</div>
-            </div>
-        `;
-        resultsContent.innerHTML += scorecardHtml;
+        // Render Tables per module
+        for (const [moduleName, moduleFindings] of Object.entries(findings.categories)) {
+            if (moduleFindings.length === 0) continue;
 
-        for (const [moduleName, dataArray] of Object.entries(findings.categories)) {
-            if (dataArray.length === 0) continue;
-
-            const block = document.createElement('div');
-            block.className = 'result-block';
-            
-            const title = document.createElement('h3');
-            title.textContent = `${moduleName} Security Posture`;
-            block.appendChild(title);
+            const sec = document.createElement('div');
+            sec.className = 'module-section';
+            sec.innerHTML = `<h3>${moduleName} Analysis</h3>`;
 
             const table = document.createElement('table');
             table.className = 'audit-table';
             
-            const thead = `
+            // Table Header
+            table.innerHTML = `
                 <thead>
                     <tr>
-                        <th>Severity</th>
-                        <th>Observation & Configuration</th>
-                        <th>Recommendation & Remediation</th>
-                        <th>Compliance</th>
+                        <th style="width: 15%">Severity</th>
+                        <th style="width: 45%">Finding / Configuration</th>
+                        <th style="width: 25%">Recommendation</th>
+                        <th style="width: 15%">Compliance</th>
                     </tr>
                 </thead>
             `;
-            table.innerHTML = thead;
-
+            
             const tbody = document.createElement('tbody');
             
-            dataArray.forEach(item => {
+            moduleFindings.forEach(item => {
                 const tr = document.createElement('tr');
                 
                 // Severity Badge
-                const tdSeverity = document.createElement('td');
-                tdSeverity.innerHTML = `<span class="badge ${item.severity}">${item.severity.toUpperCase()}</span>`;
-                tr.appendChild(tdSeverity);
-
+                const tdSev = document.createElement('td');
+                tdSev.innerHTML = `<span class="severity-badge sev-${item.severity}">${item.severity.toUpperCase()}</span>`;
+                
                 // Finding & Config Snippet
                 const tdFinding = document.createElement('td');
-                tdFinding.innerHTML = `<strong>${item.finding}</strong>`;
-                if (item.configSnippet) {
+                tdFinding.innerHTML = item.finding; // Now renders formatted HTML like <strong>Rule ID: X</strong>
+                
+                // Only renders if configSnippet actually has content
+                if (item.configSnippet && item.configSnippet.trim() !== '') {
                     tdFinding.innerHTML += `<div class="config-snippet">${item.configSnippet.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`;
                 }
-                tr.appendChild(tdFinding);
 
                 // Recommendation
                 const tdRec = document.createElement('td');
-                tdRec.innerHTML = item.recommendation;
-                tr.appendChild(tdRec);
+                tdRec.textContent = item.recommendation;
 
-                // Compliance
+                // Compliance Mapping
                 const tdComp = document.createElement('td');
-                tdComp.textContent = item.compliance;
+                tdComp.innerHTML = `<span style="font-size: 0.85em; color: #555;">${item.compliance}</span>`;
+                
+                tr.appendChild(tdSev);
+                tr.appendChild(tdFinding);
+                tr.appendChild(tdRec);
                 tr.appendChild(tdComp);
-
                 tbody.appendChild(tr);
             });
-
+            
             table.appendChild(tbody);
-            block.appendChild(table);
-            resultsContent.appendChild(block);
+            sec.appendChild(table);
+            resultsContent.appendChild(sec);
         }
+
+        resultsSection.style.display = 'block';
     }
 });
