@@ -41,13 +41,21 @@
                 <button id="runAuditBtn" class="primary-btn">Run Audit</button>
             </section>
 
-            <!-- Added wrapper for PDF generation -->
             <div id="reportContainer">
-                <section id="resultsSection" class="results-section hidden">
+                <section id="resultsSection" class="results-section hidden" style="display: none;">
                     <div class="results-header">
                         <h2>Audit Report</h2>
                         <button id="downloadPdfBtn" class="secondary-btn">Download PDF</button>
                     </div>
+
+                    <!-- Scorecard Metrics (Required by app.js) -->
+                    <div class="scorecard">
+                        <div class="score-card score-critical">Critical Risks: <span id="m-crit">0</span></div>
+                        <div class="score-card score-high">High Risks: <span id="m-high">0</span></div>
+                        <div class="score-card score-medium">Medium Risks: <span id="m-med">0</span></div>
+                        <div class="score-card score-pass">Checks Passed: <span id="m-pass">0</span></div>
+                    </div>
+
                     <div id="resultsContent"></div>
                 </section>
             </div>
