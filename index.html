@@ -3,41 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Vendor Firewall Audit Tool</title>
+    <title>Multi-Vendor Firewall & Network Audit Tool</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:,">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🛡️ Multi-Vendor Firewall Security Auditor</h1>
-            <p>Perform zero-trust, client-side compliance and security audits across Fortinet, Cisco, Palo Alto, and more.</p>
+            <h1>Network & Firewall Audit Tool</h1>
+            <p>Analyze Security Policies, Routing, SD-WAN, and VPN parameters</p>
         </header>
 
-<div class="config-section">
-            <label for="vendorSelect"><strong>Select Firewall Vendor / OS:</strong></label>
-            <select id="vendorSelect">
-                <option value="fortinet">Fortinet FortiOS</option>
-                <option value="cisco_asa">Cisco ASA / IOS</option>
-                <option value="paloalto">Palo Alto PAN-OS</option>
-                <option value="meraki">Cisco Meraki (JSON)</option>
-                <option value="sophos">Sophos XG/SG</option>
-            </select>
-        </div>
+        <main>
+            <section class="upload-section">
+                <div class="config-inputs">
+                    <label for="vendor">Platform:</label>
+                    <select id="vendor">
+                        <option value="fortigate">FortiGate</option>
+                        <option value="versa">Versa SD-WAN</option>
+                        <option value="cisco">Cisco / Generic</option>
+                    </select>
 
-        <div class="upload-card">
-            <h3>Upload Configuration File</h3>
-            <p class="subtext">Supports text, configuration, or backup files (.conf, .txt, .cfg)</p>
-            <input type="file" id="configFile" accept=".conf,.txt,.cfg">
-        </div>
+                    <label for="configFile" class="file-upload-btn">Upload Config File</label>
+                    <input type="file" id="configFile" accept=".txt,.conf,.cfg">
+                    <span id="fileName">No file chosen</span>
+                </div>
+                
+                <div class="audit-modules">
+                    <h3>Select Audit Modules</h3>
+                    <label><input type="checkbox" id="auditSecurity" checked> Security Policies</label>
+                    <label><input type="checkbox" id="auditRouting" checked> Routing (OSPF/BGP)</label>
+                    <label><input type="checkbox" id="auditSdWan" checked> SD-WAN Rules</label>
+                    <label><input type="checkbox" id="auditVpn" checked> VPN (IPsec/SSL)</label>
+                </div>
 
-<div class="controls-center">
-            <button id="auditBtn" class="btn">Run Security Audit</button>
-        </div>
+                <button id="runAuditBtn" class="primary-btn">Run Audit</button>
+            </section>
 
-        <div id="outputArea" class="hidden">
-            <div id="resultsContainer"></div>
-        </div>
+            <section id="resultsSection" class="results-section hidden">
+                <h2>Audit Results</h2>
+                <div id="resultsContent"></div>
+            </section>
+        </main>
     </div>
     <script src="app.js"></script>
 </body>
