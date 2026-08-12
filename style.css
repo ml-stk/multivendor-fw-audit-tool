@@ -142,3 +142,54 @@ input[type="file"] {
     color: #666;
     margin-bottom: 15px;
 }
+
+/* Executive Summary Scorecard */
+.scorecard {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+.score-card {
+    flex: 1;
+    padding: 15px;
+    border-radius: 6px;
+    text-align: center;
+    color: white;
+    font-weight: bold;
+}
+.score-critical { background-color: #dc3545; }
+.score-high { background-color: #fd7e14; }
+.score-medium { background-color: #ffc107; color: #333; }
+.score-pass { background-color: #28a745; }
+
+/* Severity Badges */
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: bold;
+    color: white;
+    display: inline-block;
+}
+.badge.critical { background-color: #dc3545; }
+.badge.high { background-color: #fd7e14; }
+.badge.medium { background-color: #ffc107; color: #333; }
+.badge.info { background-color: #17a2b8; }
+.badge.pass { background-color: #28a745; }
+
+/* Expanded Table Styling */
+.audit-table th:nth-child(1) { width: 10%; } /* Status */
+.audit-table th:nth-child(2) { width: 25%; } /* Finding */
+.audit-table th:nth-child(3) { width: 35%; } /* Recommendation / Fix */
+.audit-table th:nth-child(4) { width: 30%; } /* Compliance Standard */
+
+.fix-code {
+    display: block;
+    background: #e9ecef;
+    padding: 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+    margin-top: 5px;
+    color: #d63384;
+}
